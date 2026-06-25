@@ -98,6 +98,12 @@ Examples & Extras не импортируем в MVP, чтобы не засор
 
 ## WebGL Build И GitHub Pages
 
+Текущий GitHub Pages URL:
+
+```text
+https://ilya096.github.io/Retro_Timers/
+```
+
 WebGL-сборка для ручной проверки и GitHub Pages выполняется через Editor-команду:
 
 ```powershell
@@ -111,5 +117,15 @@ Editor-меню для локального запуска: `RetroTimers > Build
 - перед WebGL build автоматически пересобирается `Assets/Scenes/TimeRewindTestScene.unity`;
 - output по умолчанию: `UnityProject/Builds/WebGL`;
 - `Builds/` остается в `.gitignore` и не коммитится в source-ветку;
+- source-изменения ведутся в feature-ветке `feature/time-rewind-webgl-pages`;
+- опубликованный статический билд хранится в ветке `gh-pages` в корне ветки;
 - для GitHub Pages создается `.nojekyll`;
 - WebGL compression отключен, чтобы GitHub Pages мог отдавать файлы как обычный статический сайт без дополнительных headers.
+
+Проверенный deploy 2026-06-25:
+
+- source branch: `feature/time-rewind-webgl-pages`
+- pages branch: `gh-pages`
+- pages commit: `d3842f7`
+- Pages source: `gh-pages` / `/`
+- HTTP-проверка: `index.html`, `Build/WebGL.loader.js`, `Build/WebGL.wasm` и `Build/WebGL.data` отдают `200`.
