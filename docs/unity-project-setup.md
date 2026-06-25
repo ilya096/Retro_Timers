@@ -129,3 +129,4 @@ Editor-меню для локального запуска: `RetroTimers > Build
 - pages commit: `d3842f7`
 - Pages source: `gh-pages` / `/`
 - HTTP-проверка: `index.html`, `Build/WebGL.loader.js`, `Build/WebGL.wasm` и `Build/WebGL.data` отдают `200`.
+- Ручная проверка пользователя: опубликованная версия работает и считается стабильной для текущего MVP-среза.
