@@ -249,6 +249,8 @@ namespace RetroTimers.TimeRewind
             bool canCreatePlayableIteration = TimeRewindRules.HasEnoughActiveTime(levelTimeLimitSeconds, nextControlDelay, minimumActiveTimeAfterDelay);
             float totalPreviewDelay = rewindTransitionSeconds + nextControlDelay;
 
+            CommitAlteredPlaybackRecordings();
+
             if (activePlayer != null)
             {
                 List<ActorFrame> recording = activePlayer.FinishRecording();
@@ -389,7 +391,25 @@ namespace RetroTimers.TimeRewind
                     VisualConfig.AlteredFlashColor,
                     VisualConfig.AlteredOutlineColor,
                     levelTimeLimitSeconds);
+                foreach (TimeClonePlayback existingClone in activeClones)
+                {
+                    playback.IgnorePlaybackCollisionWith(existingClone);
+                }
+
                 activeClones.Add(playback);
+            }
+        }
+
+        private void CommitAlteredPlaybackRecordings()
+        {
+            int count = Mathf.Min(activeClones.Count, recordings.Count);
+            for (int i = 0; i < count; i++)
+            {
+                TimeClonePlayback clone = activeClones[i];
+                if (clone != null && clone.TryBuildResolvedRecording(out List<ActorFrame> resolvedRecording))
+                {
+                    recordings[i] = resolvedRecording;
+                }
             }
         }
 

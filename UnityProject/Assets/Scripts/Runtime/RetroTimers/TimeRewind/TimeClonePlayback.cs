@@ -11,6 +11,8 @@ namespace RetroTimers.TimeRewind
         [SerializeField] private ClonePlaybackMode playbackMode;
 
         private IReadOnlyList<ActorFrame> frames;
+        private readonly List<TimeClonePlayback> ignoredPlaybackPeers = new();
+        private readonly List<ActorFrame> resolvedFrames = new();
         private Rigidbody2D body;
         private Renderer[] renderers;
         private Collider2D[] colliders;
@@ -31,6 +33,7 @@ namespace RetroTimers.TimeRewind
         private string visibilityReason = "not_started";
         private float lastControlledContactTime = -999f;
         private float lastControlledBlockTime = -999f;
+        private float lastResolvedFrameTime = -999f;
 
         public ClonePlaybackMode PlaybackMode
         {
@@ -71,6 +74,7 @@ namespace RetroTimers.TimeRewind
             }
 
             EnsureCachedComponents();
+            RecordResolvedFrameIfVisible();
             float nextPlaybackTime = playbackTime + Time.fixedDeltaTime;
             if (nextPlaybackTime > playbackVisibleUntilTime)
             {
@@ -132,7 +136,9 @@ namespace RetroTimers.TimeRewind
             frameIndex = 0;
             playbackVisible = true;
             alteredByControlledPlayer = false;
+            resolvedFrames.Clear();
             lastRecordedSamplePosition = Vector2.zero;
+            lastResolvedFrameTime = -999f;
             baseColor = color;
             alteredColor = Color.Lerp(color, Color.white, 0.35f);
             alteredColor.a = color.a;
@@ -153,6 +159,51 @@ namespace RetroTimers.TimeRewind
             }
 
             ApplyPlaybackColor(baseColor);
+            RecordResolvedFrameIfVisible();
+        }
+
+        public bool TryBuildResolvedRecording(out List<ActorFrame> resolvedRecording)
+        {
+            resolvedRecording = null;
+            if (!alteredByControlledPlayer)
+            {
+                return false;
+            }
+
+            RecordResolvedFrameIfVisible();
+            if (resolvedFrames.Count == 0)
+            {
+                return false;
+            }
+
+            resolvedRecording = new List<ActorFrame>(resolvedFrames);
+            if (frames != null && frames.Count > 0 && resolvedRecording[0].Time > frames[0].Time + 0.0001f)
+            {
+                resolvedRecording.Insert(0, frames[0]);
+            }
+
+            return true;
+        }
+
+        public void IgnorePlaybackCollisionWith(TimeClonePlayback other)
+        {
+            if (other == null || other == this)
+            {
+                return;
+            }
+
+            if (!ignoredPlaybackPeers.Contains(other))
+            {
+                ignoredPlaybackPeers.Add(other);
+            }
+
+            if (!other.ignoredPlaybackPeers.Contains(this))
+            {
+                other.ignoredPlaybackPeers.Add(this);
+            }
+
+            ApplyIgnoredPlaybackCollisions();
+            other.ApplyIgnoredPlaybackCollisions();
         }
 
         private void OnCollisionStay2D(Collision2D collision)
@@ -231,6 +282,11 @@ namespace RetroTimers.TimeRewind
                 }
             }
 
+            if (visible)
+            {
+                ApplyIgnoredPlaybackCollisions();
+            }
+
             if (alteredByControlledPlayer)
             {
                 SetAlteredOutlineVisible(visible);
@@ -246,6 +302,80 @@ namespace RetroTimers.TimeRewind
 
             renderers ??= GetComponentsInChildren<Renderer>();
             colliders ??= GetComponentsInChildren<Collider2D>();
+        }
+
+        private void RecordResolvedFrameIfVisible()
+        {
+            if (!playbackVisible || frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            EnsureCachedComponents();
+            if (Mathf.Abs(playbackTime - lastResolvedFrameTime) <= 0.0001f)
+            {
+                return;
+            }
+
+            Vector2 velocity = body.linearVelocity;
+            resolvedFrames.Add(new ActorFrame(
+                playbackTime,
+                body.position,
+                velocity,
+                GetMovementDirection(velocity),
+                GetMovementState(velocity)));
+            lastResolvedFrameTime = playbackTime;
+        }
+
+        private static float GetMovementDirection(Vector2 velocity)
+        {
+            return Mathf.Abs(velocity.x) > 0.01f ? Mathf.Sign(velocity.x) : 0f;
+        }
+
+        private static ActorFrameMovementState GetMovementState(Vector2 velocity)
+        {
+            if (velocity.y > 0.01f)
+            {
+                return ActorFrameMovementState.Jumping;
+            }
+
+            if (velocity.y < -0.01f)
+            {
+                return ActorFrameMovementState.Falling;
+            }
+
+            return Mathf.Abs(velocity.x) > 0.01f ? ActorFrameMovementState.Moving : ActorFrameMovementState.Idle;
+        }
+
+        private void ApplyIgnoredPlaybackCollisions()
+        {
+            EnsureCachedComponents();
+            for (int peerIndex = ignoredPlaybackPeers.Count - 1; peerIndex >= 0; peerIndex--)
+            {
+                TimeClonePlayback peer = ignoredPlaybackPeers[peerIndex];
+                if (peer == null)
+                {
+                    ignoredPlaybackPeers.RemoveAt(peerIndex);
+                    continue;
+                }
+
+                peer.EnsureCachedComponents();
+                foreach (Collider2D ownCollider in colliders)
+                {
+                    if (ownCollider == null || !ownCollider.enabled || !ownCollider.gameObject.activeInHierarchy)
+                    {
+                        continue;
+                    }
+
+                    foreach (Collider2D peerCollider in peer.colliders)
+                    {
+                        if (peerCollider != null && peerCollider.enabled && peerCollider.gameObject.activeInHierarchy)
+                        {
+                            Physics2D.IgnoreCollision(ownCollider, peerCollider, true);
+                        }
+                    }
+                }
+            }
         }
 
         private void SetAlteredOutlineVisible(bool visible)
