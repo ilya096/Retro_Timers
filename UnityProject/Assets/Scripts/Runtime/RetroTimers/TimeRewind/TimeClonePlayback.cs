@@ -16,15 +16,40 @@ namespace RetroTimers.TimeRewind
         private Collider2D[] colliders;
         private readonly RaycastHit2D[] castHits = new RaycastHit2D[8];
         private float playbackTime;
+        private float playbackVisibleUntilTime;
         private int frameIndex;
         private bool playbackVisible;
+        private bool alteredByControlledPlayer;
         private Vector2 lastRecordedSamplePosition;
+        private Color baseColor = Color.white;
+        private Color alteredColor = Color.white;
+        private Color alteredFlashColor = Color.white;
+        private Color alteredOutlineColor = Color.white;
+        private float alteredFlashSeconds = 0.18f;
+        private GameObject alteredOutline;
+        private Coroutine alteredFlashCoroutine;
+        private string visibilityReason = "not_started";
+        private float lastControlledContactTime = -999f;
+        private float lastControlledBlockTime = -999f;
 
         public ClonePlaybackMode PlaybackMode
         {
             get => playbackMode;
             set => playbackMode = value;
         }
+
+        public bool IsAlteredByControlledPlayer => alteredByControlledPlayer;
+        public bool IsPlaybackVisible => playbackVisible;
+        public float PlaybackTime => playbackTime;
+        public float RecordingStartTime => frames != null && frames.Count > 0 ? frames[0].Time : 0f;
+        public float RecordingEndTime => frames != null && frames.Count > 0 ? frames[frames.Count - 1].Time : 0f;
+        public float PlaybackVisibleUntilTime => playbackVisibleUntilTime;
+        public int FrameCount => frames?.Count ?? 0;
+        public string VisibilityReason => visibilityReason;
+        public bool IsTouchingControlledPlayer => Time.fixedTime - lastControlledContactTime <= Time.fixedDeltaTime * 2f;
+        public bool IsBlockedByControlledPlayer => Time.fixedTime - lastControlledBlockTime <= Time.fixedDeltaTime * 2f;
+        public string DebugSummary =>
+            $"{name}: visible={playbackVisible}, reason={visibilityReason}, t={playbackTime:0.00}/{RecordingEndTime:0.00}/{playbackVisibleUntilTime:0.00}, frames={FrameCount}, altered={alteredByControlledPlayer}, contact={IsTouchingControlledPlayer}, blocked={IsBlockedByControlledPlayer}";
 
         private void Awake()
         {
@@ -47,16 +72,34 @@ namespace RetroTimers.TimeRewind
 
             EnsureCachedComponents();
             float nextPlaybackTime = playbackTime + Time.fixedDeltaTime;
-            if (nextPlaybackTime < frames[0].Time)
+            if (nextPlaybackTime > playbackVisibleUntilTime)
             {
                 playbackTime = nextPlaybackTime;
-                lastRecordedSamplePosition = frames[0].Position;
-                SetPlaybackVisible(false);
+                SetPlaybackVisible(false, "timeline_end");
                 body.linearVelocity = Vector2.zero;
                 return;
             }
 
-            SetPlaybackVisible(true);
+            if (nextPlaybackTime > frames[frames.Count - 1].Time)
+            {
+                playbackTime = nextPlaybackTime;
+                frameIndex = frames.Count - 1;
+                lastRecordedSamplePosition = frames[frames.Count - 1].Position;
+                SetPlaybackVisible(true, "holding_after_recording_end");
+                body.linearVelocity = Vector2.zero;
+                return;
+            }
+
+            if (nextPlaybackTime < frames[0].Time)
+            {
+                playbackTime = nextPlaybackTime;
+                lastRecordedSamplePosition = frames[0].Position;
+                SetPlaybackVisible(false, "waiting_first_frame");
+                body.linearVelocity = Vector2.zero;
+                return;
+            }
+
+            SetPlaybackVisible(true, "playing");
             Vector2 targetPosition = SamplePosition(nextPlaybackTime, out int sampledFrameIndex);
             Vector2 delta = GetDesiredDelta(targetPosition);
             if (IsControlledPlayerBlocking(delta))
@@ -72,25 +115,61 @@ namespace RetroTimers.TimeRewind
             body.linearVelocity = Vector2.ClampMagnitude(desiredVelocity, maxFollowSpeed);
         }
 
-        public void Play(IReadOnlyList<ActorFrame> recording, Color color, ClonePlaybackMode mode)
+        public void Play(
+            IReadOnlyList<ActorFrame> recording,
+            Color color,
+            ClonePlaybackMode mode,
+            float flashSeconds,
+            Color flashColor,
+            Color outlineColor,
+            float visibleUntilTime)
         {
             EnsureCachedComponents();
             frames = recording;
             playbackMode = mode;
+            playbackVisibleUntilTime = Mathf.Max(0f, visibleUntilTime);
             playbackTime = 0f;
             frameIndex = 0;
             playbackVisible = true;
+            alteredByControlledPlayer = false;
             lastRecordedSamplePosition = Vector2.zero;
+            baseColor = color;
+            alteredColor = Color.Lerp(color, Color.white, 0.35f);
+            alteredColor.a = color.a;
+            alteredFlashColor = flashColor;
+            alteredFlashColor.a = color.a;
+            alteredOutlineColor = outlineColor;
+            alteredOutlineColor.a = Mathf.Min(outlineColor.a, color.a);
+            alteredFlashSeconds = Mathf.Max(0.01f, flashSeconds);
+            visibilityReason = "play_initialized";
+            SetAlteredOutlineVisible(false);
 
             if (frames != null && frames.Count > 0)
             {
+                playbackVisibleUntilTime = Mathf.Max(playbackVisibleUntilTime, frames[frames.Count - 1].Time);
                 transform.position = frames[0].Position;
                 lastRecordedSamplePosition = frames[0].Position;
-                SetPlaybackVisible(frames[0].Time <= 0f);
+                SetPlaybackVisible(frames[0].Time <= 0f, frames[0].Time <= 0f ? "playing" : "waiting_first_frame");
             }
 
+            ApplyPlaybackColor(baseColor);
+        }
+
+        private void OnCollisionStay2D(Collision2D collision)
+        {
+            PlayerActor player = collision.collider != null ? collision.collider.GetComponentInParent<PlayerActor>() : null;
+            if (player != null && player.HasControl)
+            {
+                lastControlledContactTime = Time.fixedTime;
+                MarkAlteredByControlledPlayer();
+            }
+        }
+
+        private void ApplyPlaybackColor(Color color)
+        {
             if (TryGetComponent(out MeshRenderer meshRenderer))
             {
+                PrepareTransparentMaterial(meshRenderer.material);
                 meshRenderer.material.color = color;
             }
 
@@ -100,9 +179,35 @@ namespace RetroTimers.TimeRewind
             }
         }
 
-        private void SetPlaybackVisible(bool visible)
+        private void MarkAlteredByControlledPlayer()
+        {
+            if (alteredByControlledPlayer)
+            {
+                return;
+            }
+
+            alteredByControlledPlayer = true;
+            SetAlteredOutlineVisible(true);
+            if (alteredFlashCoroutine != null)
+            {
+                StopCoroutine(alteredFlashCoroutine);
+            }
+
+            alteredFlashCoroutine = StartCoroutine(PlayAlteredFlash());
+        }
+
+        private System.Collections.IEnumerator PlayAlteredFlash()
+        {
+            ApplyPlaybackColor(alteredFlashColor);
+            yield return new WaitForSeconds(alteredFlashSeconds);
+            ApplyPlaybackColor(alteredColor);
+            alteredFlashCoroutine = null;
+        }
+
+        private void SetPlaybackVisible(bool visible, string reason)
         {
             EnsureCachedComponents();
+            visibilityReason = reason;
             if (playbackVisible == visible)
             {
                 return;
@@ -125,6 +230,11 @@ namespace RetroTimers.TimeRewind
                     item.enabled = visible;
                 }
             }
+
+            if (alteredByControlledPlayer)
+            {
+                SetAlteredOutlineVisible(visible);
+            }
         }
 
         private void EnsureCachedComponents()
@@ -136,6 +246,39 @@ namespace RetroTimers.TimeRewind
 
             renderers ??= GetComponentsInChildren<Renderer>();
             colliders ??= GetComponentsInChildren<Collider2D>();
+        }
+
+        private void SetAlteredOutlineVisible(bool visible)
+        {
+            EnsureAlteredOutline();
+            if (alteredOutline != null)
+            {
+                alteredOutline.SetActive(visible && playbackVisible);
+            }
+        }
+
+        private void EnsureAlteredOutline()
+        {
+            if (alteredOutline != null)
+            {
+                return;
+            }
+
+            alteredOutline = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            alteredOutline.name = "Altered Outline";
+            alteredOutline.transform.SetParent(transform, false);
+            alteredOutline.transform.localPosition = new Vector3(0f, 0f, 0.04f);
+            alteredOutline.transform.localScale = new Vector3(1.18f, 1.12f, 1.18f);
+
+            Collider outlineCollider = alteredOutline.GetComponent<Collider>();
+            if (outlineCollider != null)
+            {
+                Destroy(outlineCollider);
+            }
+
+            MeshRenderer outlineRenderer = alteredOutline.GetComponent<MeshRenderer>();
+            outlineRenderer.material = BuildRuntimeMaterial("AlteredCloneOutlineMaterial", alteredOutlineColor);
+            alteredOutline.SetActive(false);
         }
 
         private Vector2 GetDesiredDelta(Vector2 targetPosition)
@@ -187,12 +330,57 @@ namespace RetroTimers.TimeRewind
                     PlayerActor player = hit != null ? hit.GetComponentInParent<PlayerActor>() : null;
                     if (player != null && player.HasControl)
                     {
+                        lastControlledBlockTime = Time.fixedTime;
+                        MarkAlteredByControlledPlayer();
                         return true;
                     }
                 }
             }
 
             return false;
+        }
+
+        private static Material BuildRuntimeMaterial(string materialName, Color color)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
+            Material material = new(shader)
+            {
+                name = materialName,
+                color = color
+            };
+            PrepareTransparentMaterial(material);
+            return material;
+        }
+
+        private static void PrepareTransparentMaterial(Material material)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            if (material.HasProperty("_Surface"))
+            {
+                material.SetFloat("_Surface", 1f);
+            }
+
+            if (material.HasProperty("_SrcBlend"))
+            {
+                material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            }
+
+            if (material.HasProperty("_DstBlend"))
+            {
+                material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            }
+
+            if (material.HasProperty("_ZWrite"))
+            {
+                material.SetFloat("_ZWrite", 0f);
+            }
+
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         }
     }
 }

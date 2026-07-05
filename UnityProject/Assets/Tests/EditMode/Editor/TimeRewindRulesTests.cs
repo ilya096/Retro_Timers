@@ -26,4 +26,21 @@ public sealed class TimeRewindRulesTests
         Assert.IsFalse(TimeRewindRules.CanRequestManualRewind(levelEnded: false, controlledActorAlive: false, deathAlreadyFixed: false));
         Assert.IsFalse(TimeRewindRules.CanRequestManualRewind(levelEnded: false, controlledActorAlive: true, deathAlreadyFixed: true));
     }
+
+    [Test]
+    public void CalculateSpawnProgressNormalized_UsesRemainingDelayAgainstTotalDelay()
+    {
+        Assert.AreEqual(0f, TimeRewindRules.CalculateSpawnProgressNormalized(3f, 3f));
+        Assert.AreEqual(0.5f, TimeRewindRules.CalculateSpawnProgressNormalized(1.5f, 3f));
+        Assert.AreEqual(1f, TimeRewindRules.CalculateSpawnProgressNormalized(0f, 3f));
+        Assert.AreEqual(1f, TimeRewindRules.CalculateSpawnProgressNormalized(0f, 0f));
+    }
+
+    [Test]
+    public void CalculateCloneAgeAlpha_AppliesStepAndMinimum()
+    {
+        Assert.AreEqual(0.8f, TimeRewindRules.CalculateCloneAgeAlpha(0.8f, 0.2f, 0.2f, 0));
+        Assert.AreEqual(0.6f, TimeRewindRules.CalculateCloneAgeAlpha(0.8f, 0.2f, 0.2f, 1), 0.0001f);
+        Assert.AreEqual(0.2f, TimeRewindRules.CalculateCloneAgeAlpha(0.8f, 0.2f, 0.2f, 4), 0.0001f);
+    }
 }

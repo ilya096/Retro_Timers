@@ -27,9 +27,50 @@ namespace RetroTimers.TimeRewind
             return CalculateRemainingActiveTime(levelTimeLimitSeconds, playerControlDelay) >= minimumActiveTimeAfterDelay;
         }
 
+        public static float CalculateSpawnProgressNormalized(float remainingSpawnDelay, float totalSpawnDelay)
+        {
+            if (totalSpawnDelay <= 0f)
+            {
+                return 1f;
+            }
+
+            return 1f - Clamp01(remainingSpawnDelay / totalSpawnDelay);
+        }
+
+        public static float CalculateCloneAgeAlpha(float newestAlpha, float alphaStep, float minimumAlpha, int ageFromNewest)
+        {
+            if (ageFromNewest < 0)
+            {
+                ageFromNewest = 0;
+            }
+
+            float alpha = newestAlpha - alphaStep * ageFromNewest;
+            if (alpha < minimumAlpha)
+            {
+                alpha = minimumAlpha;
+            }
+
+            return Clamp01(alpha);
+        }
+
         public static bool CanRequestManualRewind(bool levelEnded, bool controlledActorAlive, bool deathAlreadyFixed)
         {
             return !levelEnded && controlledActorAlive && !deathAlreadyFixed;
+        }
+
+        private static float Clamp01(float value)
+        {
+            if (value < 0f)
+            {
+                return 0f;
+            }
+
+            if (value > 1f)
+            {
+                return 1f;
+            }
+
+            return value;
         }
     }
 }

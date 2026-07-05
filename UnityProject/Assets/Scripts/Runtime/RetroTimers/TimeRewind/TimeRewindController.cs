@@ -5,6 +5,49 @@ using UnityEngine.InputSystem;
 
 namespace RetroTimers.TimeRewind
 {
+    [System.Serializable]
+    public sealed class TimeRewindVisualConfig
+    {
+        [Header("Actors")]
+        [SerializeField] private Color activePlayerColor = new(0.15f, 0.85f, 1f, 1f);
+        [SerializeField] private Color firstCloneColor = new(1f, 0.84f, 0.25f, 1f);
+        [SerializeField] private Color oldCloneColor = new(0.55f, 0.62f, 0.72f, 1f);
+        [SerializeField] private Color alteredFlashColor = new(1f, 1f, 1f, 1f);
+        [SerializeField] private Color alteredOutlineColor = new(0.82f, 0.94f, 1f, 0.5f);
+
+        [Header("Delayed Spawn")]
+        [SerializeField] private Color delayedSpawnPreviewColor = new(0.15f, 0.85f, 1f, 0.8f);
+        [SerializeField] private Color delayedSpawnProgressColor = new(0.15f, 0.85f, 1f, 0.9f);
+        [SerializeField] private Color delayedSpawnProgressBackColor = new(0f, 0f, 0f, 0.35f);
+        [SerializeField] private Color delayedSpawnFlashColor = new(1f, 1f, 1f, 0.75f);
+
+        [Header("Test Scene Objects")]
+        [SerializeField] private Color cameraBackgroundColor = new(0.08f, 0.1f, 0.14f, 1f);
+        [SerializeField] private Color solidLevelColor = new(0.2f, 0.24f, 0.3f, 1f);
+        [SerializeField] private Color pressurePlateColor = new(1f, 0.84f, 0.25f, 1f);
+        [SerializeField] private Color doorColor = new(0.85f, 0.25f, 0.2f, 1f);
+        [SerializeField] private Color exitColor = new(0.2f, 1f, 0.55f, 1f);
+        [SerializeField] private Color hazardColor = new(0.85f, 0.1f, 0.32f, 1f);
+        [SerializeField] private Color sceneLabelColor = Color.white;
+
+        public Color ActivePlayerColor => activePlayerColor;
+        public Color FirstCloneColor => firstCloneColor;
+        public Color OldCloneColor => oldCloneColor;
+        public Color AlteredFlashColor => alteredFlashColor;
+        public Color AlteredOutlineColor => alteredOutlineColor;
+        public Color DelayedSpawnPreviewColor => delayedSpawnPreviewColor;
+        public Color DelayedSpawnProgressColor => delayedSpawnProgressColor;
+        public Color DelayedSpawnProgressBackColor => delayedSpawnProgressBackColor;
+        public Color DelayedSpawnFlashColor => delayedSpawnFlashColor;
+        public Color CameraBackgroundColor => cameraBackgroundColor;
+        public Color SolidLevelColor => solidLevelColor;
+        public Color PressurePlateColor => pressurePlateColor;
+        public Color DoorColor => doorColor;
+        public Color ExitColor => exitColor;
+        public Color HazardColor => hazardColor;
+        public Color SceneLabelColor => sceneLabelColor;
+    }
+
     public sealed class TimeRewindController : MonoBehaviour
     {
         [Header("Scene References")]
@@ -18,13 +61,23 @@ namespace RetroTimers.TimeRewind
         [SerializeField] private float minimumActiveTimeAfterDelay = 1f;
         [SerializeField] private float rewindTransitionSeconds = 0.35f;
 
+        [Header("Visual Config")]
+        [SerializeField] private TimeRewindVisualConfig visualConfig = new();
+
         [Header("Clone Readability")]
-        [SerializeField] private Color activePlayerColor = new(0.15f, 0.85f, 1f, 1f);
-        [SerializeField] private Color firstCloneColor = new(1f, 0.84f, 0.25f, 1f);
-        [SerializeField] private Color oldCloneColor = new(0.55f, 0.62f, 0.72f, 1f);
+        [SerializeField] private float cloneNewestAlpha = 0.8f;
+        [SerializeField] private float cloneAlphaStep = 0.2f;
+        [SerializeField] private float cloneMinAlpha = 0.2f;
+        [SerializeField] private float cloneAlteredFlashSeconds = 0.18f;
+
+        [Header("Delayed Spawn Preview")]
+        [SerializeField] private float delayedSpawnPreviewThresholdSeconds = 0.25f;
+        [SerializeField] private int delayedSpawnRadialSegments = 48;
+        [SerializeField] private float delayedSpawnRadialRadius = 0.32f;
+        [SerializeField] private float delayedSpawnRadialGapAboveGhost = 0.12f;
 
         [Header("Debug")]
-        [SerializeField] private ClonePlaybackMode clonePlaybackMode;
+        [SerializeField] private ClonePlaybackMode clonePlaybackMode = ClonePlaybackMode.PreservePhysicalOffset;
 
         private readonly List<List<ActorFrame>> recordings = new();
         private readonly List<TimeClonePlayback> activeClones = new();
@@ -36,6 +89,22 @@ namespace RetroTimers.TimeRewind
         private int completedRewindCount;
         private string statusMessage = "Отмотка доступна: R / Y";
         private bool deathAlreadyFixed;
+        private GameObject delayedSpawnPreview;
+        private LineRenderer delayedSpawnProgressRing;
+        private LineRenderer delayedSpawnProgressBackRing;
+        private GameObject delayedSpawnFlash;
+        private TimeRewindVisualConfig VisualConfig
+        {
+            get
+            {
+                if (visualConfig == null)
+                {
+                    visualConfig = new TimeRewindVisualConfig();
+                }
+
+                return visualConfig;
+            }
+        }
 
         public TimeRewindStatus Status => status;
         public float IterationTimer => iterationTimer;
@@ -47,6 +116,7 @@ namespace RetroTimers.TimeRewind
         public string StatusMessage => statusMessage;
         public ClonePlaybackMode PlaybackMode => clonePlaybackMode;
         public string PlaybackModeLabel => clonePlaybackMode == ClonePlaybackMode.FollowRecordedPosition ? "Recover to recording" : "Preserve displacement";
+        public bool AnyCloneAlteredByControlledPlayer => activeClones.Exists(clone => clone != null && clone.IsAlteredByControlledPlayer);
         public bool RewindAvailable => TimeRewindRules.CanRequestManualRewind(IsLevelEnded, activePlayer != null && activePlayer.IsAlive, deathAlreadyFixed);
         public bool IsLevelEnded => status is TimeRewindStatus.Won or TimeRewindStatus.Failed;
 
@@ -174,6 +244,10 @@ namespace RetroTimers.TimeRewind
 
             status = TimeRewindStatus.Rewinding;
             statusMessage = reason == RewindReason.Manual ? "Отмотка..." : "Время вышло: авто-отмотка";
+            int nextCompletedRewindCount = completedRewindCount + 1;
+            float nextControlDelay = TimeRewindRules.CalculatePlayerControlDelay(cloneSpawnDelaySeconds, nextCompletedRewindCount);
+            bool canCreatePlayableIteration = TimeRewindRules.HasEnoughActiveTime(levelTimeLimitSeconds, nextControlDelay, minimumActiveTimeAfterDelay);
+            float totalPreviewDelay = rewindTransitionSeconds + nextControlDelay;
 
             if (activePlayer != null)
             {
@@ -182,20 +256,36 @@ namespace RetroTimers.TimeRewind
                 {
                     recordings.Add(recording);
                 }
+
+                activePlayer.gameObject.SetActive(false);
             }
 
-            yield return new WaitForSeconds(rewindTransitionSeconds);
+            if (canCreatePlayableIteration && totalPreviewDelay >= delayedSpawnPreviewThresholdSeconds)
+            {
+                ShowDelayedSpawnPreview();
+            }
+
+            float transitionRemaining = rewindTransitionSeconds;
+            while (transitionRemaining > 0f)
+            {
+                if (canCreatePlayableIteration)
+                {
+                    UpdateDelayedSpawnPreview(nextControlDelay + transitionRemaining, totalPreviewDelay);
+                }
+
+                transitionRemaining -= Time.deltaTime;
+                yield return null;
+            }
 
             completedRewindCount++;
-            float nextControlDelay = TimeRewindRules.CalculatePlayerControlDelay(cloneSpawnDelaySeconds, completedRewindCount);
-            bool canCreatePlayableIteration = TimeRewindRules.HasEnoughActiveTime(levelTimeLimitSeconds, nextControlDelay, minimumActiveTimeAfterDelay);
 
             ResetWorld();
-            DestroyActors();
+            DestroyActors(hidePreview: false);
             SpawnPlaybackClones();
 
             if (!canCreatePlayableIteration)
             {
+                HideDelayedSpawnPreview();
                 status = TimeRewindStatus.Failed;
                 statusMessage = "Новой итерации не хватает времени. Нажми Restart";
                 activePlayer = null;
@@ -203,10 +293,10 @@ namespace RetroTimers.TimeRewind
             }
 
             status = TimeRewindStatus.Running;
-            BeginIteration(nextControlDelay);
+            BeginIteration(nextControlDelay, totalPreviewDelay, delayedSpawnPreview != null && delayedSpawnPreview.activeSelf);
         }
 
-        private void BeginIteration(float controlDelay)
+        private void BeginIteration(float controlDelay, float previewTotalDelay = -1f, bool previewAlreadyVisible = false)
         {
             iterationTimer = 0f;
             currentControlDelay = controlDelay;
@@ -219,25 +309,44 @@ namespace RetroTimers.TimeRewind
                 return;
             }
 
-            statusMessage = controlDelay > 0f ? $"Ожидание появления: {controlDelay:0.0} c" : "Отмотка доступна: R / Y";
-            StartCoroutine(SpawnPlayerAfterDelay(controlDelay));
+            statusMessage = controlDelay > 0f ? "Появление готовится" : "Отмотка доступна: R / Y";
+            StartCoroutine(SpawnPlayerAfterDelay(controlDelay, previewTotalDelay, previewAlreadyVisible));
         }
 
-        private IEnumerator SpawnPlayerAfterDelay(float delay)
+        private IEnumerator SpawnPlayerAfterDelay(float delay, float previewTotalDelay, bool previewAlreadyVisible)
         {
+            bool spawnFlashStarted = false;
+            float totalDelay = previewTotalDelay > 0f ? previewTotalDelay : delay;
+            if (!previewAlreadyVisible && totalDelay >= delayedSpawnPreviewThresholdSeconds)
+            {
+                ShowDelayedSpawnPreview();
+            }
+            else if (!previewAlreadyVisible && delay > 0f)
+            {
+                StartCoroutine(PlayDelayedSpawnFlash());
+                spawnFlashStarted = true;
+            }
+
             float remaining = delay;
             while (remaining > 0f && status == TimeRewindStatus.Running)
             {
-                statusMessage = $"Ожидание появления: {remaining:0.0} c";
+                statusMessage = "Появление готовится";
+                UpdateDelayedSpawnPreview(remaining, totalDelay);
                 remaining -= Time.deltaTime;
                 yield return null;
             }
 
             if (status != TimeRewindStatus.Running)
             {
+                HideDelayedSpawnPreview();
                 yield break;
             }
 
+            HideDelayedSpawnPreview();
+            if (!spawnFlashStarted)
+            {
+                StartCoroutine(PlayDelayedSpawnFlash());
+            }
             GameObject playerObject = Instantiate(playerPrefab, playerSpawn.position, playerSpawn.rotation);
             playerObject.SetActive(true);
             activePlayer = playerObject.GetComponent<PlayerActor>();
@@ -250,7 +359,7 @@ namespace RetroTimers.TimeRewind
             }
 
             activePlayer.name = $"Player Iteration {completedRewindCount + 1}";
-            ApplyActorColor(activePlayer.gameObject, activePlayerColor);
+            ApplyActorColor(activePlayer.gameObject, VisualConfig.ActivePlayerColor);
             activePlayer.BeginIteration(enableRecording: true, initialIterationTime: delay);
             activePlayer.SetControlEnabled(true);
             statusMessage = "Отмотка доступна: R / Y";
@@ -268,9 +377,18 @@ namespace RetroTimers.TimeRewind
 
                 GameObject cloneObject = BuildCloneObject($"Clone {i + 1}", recording[0].Position);
                 TimeClonePlayback playback = cloneObject.AddComponent<TimeClonePlayback>();
-                Color cloneColor = Color.Lerp(firstCloneColor, oldCloneColor, recordings.Count <= 1 ? 0f : (float)i / (recordings.Count - 1));
+                Color cloneColor = Color.Lerp(VisualConfig.FirstCloneColor, VisualConfig.OldCloneColor, recordings.Count <= 1 ? 0f : (float)i / (recordings.Count - 1));
+                int ageFromNewest = recordings.Count - 1 - i;
+                cloneColor.a = TimeRewindRules.CalculateCloneAgeAlpha(cloneNewestAlpha, cloneAlphaStep, cloneMinAlpha, ageFromNewest);
                 ApplyActorColor(playback.gameObject, cloneColor);
-                playback.Play(recording, cloneColor, clonePlaybackMode);
+                playback.Play(
+                    recording,
+                    cloneColor,
+                    clonePlaybackMode,
+                    cloneAlteredFlashSeconds,
+                    VisualConfig.AlteredFlashColor,
+                    VisualConfig.AlteredOutlineColor,
+                    levelTimeLimitSeconds);
                 activeClones.Add(playback);
             }
         }
@@ -346,8 +464,13 @@ namespace RetroTimers.TimeRewind
             template.SetActive(false);
         }
 
-        private void DestroyActors()
+        private void DestroyActors(bool hidePreview = true)
         {
+            if (hidePreview)
+            {
+                HideDelayedSpawnPreview();
+            }
+
             if (activePlayer != null)
             {
                 Destroy(activePlayer.gameObject);
@@ -402,6 +525,7 @@ namespace RetroTimers.TimeRewind
         {
             if (actor.TryGetComponent(out MeshRenderer meshRenderer))
             {
+                PrepareTransparentMaterial(meshRenderer.material);
                 meshRenderer.material.color = color;
             }
 
@@ -409,6 +533,191 @@ namespace RetroTimers.TimeRewind
             {
                 spriteRenderer.color = color;
             }
+        }
+
+        private void ShowDelayedSpawnPreview()
+        {
+            if (playerSpawn == null || playerPrefab == null)
+            {
+                return;
+            }
+
+            EnsureDelayedSpawnPreview();
+            delayedSpawnPreview.transform.position = playerSpawn.position;
+            delayedSpawnPreview.SetActive(true);
+            UpdateDelayedSpawnPreview(currentControlDelay, currentControlDelay);
+        }
+
+        private void UpdateDelayedSpawnPreview(float remainingDelay, float totalDelay)
+        {
+            if (delayedSpawnPreview == null || !delayedSpawnPreview.activeSelf || delayedSpawnProgressRing == null)
+            {
+                return;
+            }
+
+            float progress = TimeRewindRules.CalculateSpawnProgressNormalized(remainingDelay, totalDelay);
+            SetRadialProgress(delayedSpawnProgressRing, GetDelayedSpawnRadialRadius(), progress);
+        }
+
+        private void HideDelayedSpawnPreview()
+        {
+            if (delayedSpawnPreview != null)
+            {
+                delayedSpawnPreview.SetActive(false);
+            }
+        }
+
+        private IEnumerator PlayDelayedSpawnFlash()
+        {
+            if (playerSpawn == null)
+            {
+                yield break;
+            }
+
+            EnsureDelayedSpawnFlash();
+            delayedSpawnFlash.transform.position = playerSpawn.position;
+            delayedSpawnFlash.SetActive(true);
+            yield return new WaitForSeconds(0.12f);
+            if (delayedSpawnFlash != null)
+            {
+                delayedSpawnFlash.SetActive(false);
+            }
+        }
+
+        private void EnsureDelayedSpawnPreview()
+        {
+            if (delayedSpawnPreview != null)
+            {
+                return;
+            }
+
+            delayedSpawnPreview = new GameObject("Delayed Spawn Preview");
+
+            GameObject silhouette = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            silhouette.name = "Spawn Silhouette";
+            silhouette.transform.SetParent(delayedSpawnPreview.transform, false);
+            silhouette.transform.localScale = playerPrefab.transform.localScale;
+            Destroy(silhouette.GetComponent<Collider>());
+            MeshRenderer silhouetteRenderer = silhouette.GetComponent<MeshRenderer>();
+            silhouetteRenderer.material = BuildRuntimeMaterial("DelayedSpawnPreviewMaterial", VisualConfig.DelayedSpawnPreviewColor);
+
+            float radialRadius = GetDelayedSpawnRadialRadius();
+            Vector3 radialPosition = GetDelayedSpawnRadialLocalPosition(radialRadius);
+            delayedSpawnProgressBackRing = CreateProgressRing("Spawn Progress Back", VisualConfig.DelayedSpawnProgressBackColor, 0.02f, radialPosition);
+            SetRadialProgress(delayedSpawnProgressBackRing, radialRadius, 1f);
+
+            delayedSpawnProgressRing = CreateProgressRing("Spawn Progress Ring", VisualConfig.DelayedSpawnProgressColor, 0.035f, radialPosition);
+            SetRadialProgress(delayedSpawnProgressRing, radialRadius, 0f);
+
+            delayedSpawnPreview.SetActive(false);
+        }
+
+        private LineRenderer CreateProgressRing(string objectName, Color color, float width, Vector3 localPosition)
+        {
+            GameObject ringObject = new(objectName);
+            ringObject.transform.SetParent(delayedSpawnPreview.transform, false);
+            ringObject.transform.localPosition = localPosition;
+            LineRenderer line = ringObject.AddComponent<LineRenderer>();
+            line.useWorldSpace = false;
+            line.loop = false;
+            line.widthMultiplier = width;
+            line.numCapVertices = 4;
+            line.numCornerVertices = 4;
+            line.material = BuildRuntimeMaterial($"{objectName}Material", color);
+            return line;
+        }
+
+        private void SetRadialProgress(LineRenderer ring, float radius, float progress)
+        {
+            if (ring == null)
+            {
+                return;
+            }
+
+            progress = Mathf.Clamp01(progress);
+            int segmentCount = Mathf.Max(8, delayedSpawnRadialSegments);
+            int pointCount = Mathf.Max(2, Mathf.CeilToInt(segmentCount * progress) + 1);
+            float arc = Mathf.PI * 2f * progress;
+            ring.positionCount = pointCount;
+
+            for (int i = 0; i < pointCount; i++)
+            {
+                float t = pointCount <= 1 ? 0f : (float)i / (pointCount - 1);
+                float angle = Mathf.PI * 0.5f - arc * t;
+                ring.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, -0.08f));
+            }
+        }
+
+        private float GetDelayedSpawnRadialRadius()
+        {
+            float playerWidth = playerPrefab != null ? Mathf.Abs(playerPrefab.transform.localScale.x) : 0.75f;
+            return Mathf.Min(Mathf.Max(0.05f, delayedSpawnRadialRadius), playerWidth * 0.5f);
+        }
+
+        private Vector3 GetDelayedSpawnRadialLocalPosition(float radius)
+        {
+            float playerHeight = playerPrefab != null ? Mathf.Abs(playerPrefab.transform.localScale.y) : 1.35f;
+            float y = playerHeight * 0.5f + radius + delayedSpawnRadialGapAboveGhost;
+            return new Vector3(0f, y, -0.08f);
+        }
+
+        private void EnsureDelayedSpawnFlash()
+        {
+            if (delayedSpawnFlash != null)
+            {
+                return;
+            }
+
+            delayedSpawnFlash = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            delayedSpawnFlash.name = "Delayed Spawn Flash";
+            delayedSpawnFlash.transform.localScale = playerPrefab != null ? playerPrefab.transform.localScale * 1.25f : Vector3.one;
+            Destroy(delayedSpawnFlash.GetComponent<Collider>());
+            MeshRenderer flashRenderer = delayedSpawnFlash.GetComponent<MeshRenderer>();
+            flashRenderer.material = BuildRuntimeMaterial("DelayedSpawnFlashMaterial", VisualConfig.DelayedSpawnFlashColor);
+            delayedSpawnFlash.SetActive(false);
+        }
+
+        private static Material BuildRuntimeMaterial(string materialName, Color color)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
+            Material material = new(shader)
+            {
+                name = materialName,
+                color = color
+            };
+            PrepareTransparentMaterial(material);
+            return material;
+        }
+
+        private static void PrepareTransparentMaterial(Material material)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            if (material.HasProperty("_Surface"))
+            {
+                material.SetFloat("_Surface", 1f);
+            }
+
+            if (material.HasProperty("_SrcBlend"))
+            {
+                material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            }
+
+            if (material.HasProperty("_DstBlend"))
+            {
+                material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            }
+
+            if (material.HasProperty("_ZWrite"))
+            {
+                material.SetFloat("_ZWrite", 0f);
+            }
+
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         }
     }
 }

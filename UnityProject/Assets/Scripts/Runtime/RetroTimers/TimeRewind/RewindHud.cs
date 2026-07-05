@@ -1,4 +1,7 @@
 using UnityEngine;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using UnityEngine.InputSystem;
+#endif
 
 namespace RetroTimers.TimeRewind
 {
@@ -8,6 +11,9 @@ namespace RetroTimers.TimeRewind
 
         private GUIStyle labelStyle;
         private GUIStyle buttonStyle;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private bool showDebugPanel;
+#endif
 
         private void Awake()
         {
@@ -16,6 +22,16 @@ namespace RetroTimers.TimeRewind
                 controller = FindFirstObjectByType<TimeRewindController>();
             }
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void Update()
+        {
+            if (Keyboard.current != null && Keyboard.current.f3Key.wasPressedThisFrame)
+            {
+                showDebugPanel = !showDebugPanel;
+            }
+        }
+#endif
 
         private void OnGUI()
         {
@@ -26,7 +42,7 @@ namespace RetroTimers.TimeRewind
 
             EnsureStyles();
 
-            Rect panel = new(16, 16, 460, 210);
+            Rect panel = new(16, 16, 460, 180);
             GUI.Box(panel, GUIContent.none);
 
             float remaining = Mathf.Max(0f, controller.LevelTimeLimitSeconds - controller.IterationTimer);
@@ -34,21 +50,37 @@ namespace RetroTimers.TimeRewind
             GUI.Label(new Rect(28, 58, 390, 26), $"Rewinds: {controller.CompletedRewindCount}", labelStyle);
             GUI.Label(new Rect(28, 88, 390, 26), $"Control delay: {controller.CurrentControlDelay:0.0}s", labelStyle);
             GUI.Label(new Rect(28, 118, 390, 26), controller.StatusMessage, labelStyle);
-            GUI.Label(new Rect(28, 148, 410, 26), $"Clone mode: {controller.PlaybackModeLabel}", labelStyle);
-
-            if (GUI.Button(new Rect(28, 178, 210, 28), "Toggle clone mode", buttonStyle))
-            {
-                controller.ToggleClonePlaybackMode();
-            }
 
             if (controller.Status == TimeRewindStatus.Failed)
             {
-                if (GUI.Button(new Rect(254, 178, 180, 28), "Restart", buttonStyle))
+                if (GUI.Button(new Rect(28, 148, 180, 28), "Restart", buttonStyle))
                 {
                     controller.RestartLevel();
                 }
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (showDebugPanel)
+            {
+                DrawDebugPanel();
+            }
+#endif
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void DrawDebugPanel()
+        {
+            Rect panel = new(16, 208, 460, 130);
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(28, 220, 410, 26), $"Debug clone mode: {controller.PlaybackModeLabel}", labelStyle);
+            GUI.Label(new Rect(28, 250, 410, 26), $"Clone altered: {(controller.AnyCloneAlteredByControlledPlayer ? "yes" : "no")}", labelStyle);
+
+            if (GUI.Button(new Rect(28, 290, 210, 28), "Toggle clone mode", buttonStyle))
+            {
+                controller.ToggleClonePlaybackMode();
+            }
+        }
+#endif
 
         private void EnsureStyles()
         {

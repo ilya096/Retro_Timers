@@ -7,11 +7,11 @@
 | player_movement | Движение И Прыжок | Базовое платформерное управление персонажем на PC с клавиатурой и геймпадом; прыжок в MVP выше роста игрока, чтобы запрыгивать на клонов. | Дает точный контроль в комнатах, где важны позиция, тайминг и физическая блокировка клонов. | MVP | none | all | validated_in_webgl_slice | docs/2026-06-25_player_movement_gd-spec.md |
 | level_timer_and_exit | Таймер И Выход | В MVP-срезе уровень имеет лимит времени, выход, победу при достижении выхода игроком или клоном и fail-state при нехватке активного времени после задержки. | Создает давление времени, ясную цель комнаты и конечный предел полезных итераций. | MVP | player_movement | all | implemented_in_mvp_slice | TBD |
 | death_and_paradox | Смерть И Парадокс | В MVP-срезе hazard завершает уровень поражением из-за парадокса при смерти игрока или клона. | Делает каждую прошлую итерацию важной и поддерживает напряжение. | MVP | player_movement | all | implemented_in_mvp_slice | TBD |
-| time_rewind | Отмотка Времени | Игрок может вручную вернуть уровень к старту, а при истечении таймера игра принудительно отматывает время, если у нового клона останется минимум 1 секунда активного времени. | Превращает ошибку, тупик или истечение времени в часть решения, пока таймер еще позволяет полезную итерацию. | MVP | level_timer_and_exit, death_and_paradox | all | validated_in_webgl_slice | docs/2026-06-25_time_rewind_gd-spec.md |
-| clone_recording_and_playback | Запись И Воспроизведение Клонов | В MVP-срезе прошлая итерация записывает позицию/скорость и после отмотки становится playback-клоном. | Позволяет строить решения через кооперацию с прошлым собой. | MVP | time_rewind | all | validated_in_webgl_slice | TBD |
-| clone_collision_and_interaction | Коллизии И Взаимодействие Клонов | Клоны взаимодействуют с игроком и объектами; debug-переключатель сравнивает возврат к записанной позиции и сохранение физического смещения. | Дает нестандартные решения и делает клонов физической частью пазла. | MVP | clone_recording_and_playback | all | validated_in_webgl_slice_with_open_default | docs/2026-06-25_clone_collision_and_interaction_gd-spec.md |
-| delayed_clone_control | Задержка Управления Новым Клоном | В MVP-срезе новая управляемая итерация физически появляется после задержки, зависящей от числа отмоток; delayed playback сохраняет фактическое время появления. | Сохраняет читаемость старта и предотвращает разрушение предыдущих записей. | MVP | clone_recording_and_playback | all | validated_in_webgl_slice | TBD |
-| clone_readability | Визуальная Читаемость Клонов | В MVP-срезе активный игрок и playback-клоны различаются цветом; финальный визуальный язык возраста клонов остается открытым. | Помогает понимать, какая итерация выполняет какое действие. | MVP | clone_recording_and_playback | all | mvp_placeholder | TBD |
+| time_rewind | Отмотка Времени | Игрок может вручную вернуть уровень к старту, а при истечении таймера игра принудительно отматывает время, если у нового клона останется минимум 1 секунда активного времени. | Превращает ошибку, тупик или истечение времени в часть решения, пока таймер еще позволяет полезную итерацию. | MVP | level_timer_and_exit, death_and_paradox | all | validated_in_local_slice | docs/2026-06-25_time_rewind_gd-spec.md |
+| clone_recording_and_playback | Запись И Воспроизведение Клонов | В MVP-срезе прошлая итерация записывает позицию/скорость и после отмотки становится playback-клоном; после конца записи клон удерживает последнюю позицию до конца таймера уровня; дефолт playback после вмешательства: `Preserve displacement`. | Позволяет строить решения через кооперацию с прошлым собой и физически менять последствия прошлой попытки. | MVP | time_rewind | all | validated_in_local_slice | docs/2026-07-04_clone_recording_and_playback_gd-spec.md |
+| clone_collision_and_interaction | Коллизии И Взаимодействие Клонов | Клоны взаимодействуют с игроком и объектами; `Preserve displacement` выбран MVP-дефолтом, а сравнение с recover-режимом остается в editor/development debug-панели. | Дает нестандартные решения и делает клонов физической частью пазла. | MVP | clone_recording_and_playback | all | validated_in_local_slice | docs/2026-06-25_clone_collision_and_interaction_gd-spec.md |
+| delayed_clone_control | Задержка Управления Новым Клоном | Новая управляемая итерация появляется после линейной задержки; после rewind текущая итерация скрывается, а в spawn-точке виден ghost/preview с радиальным progress-индикатором без текста. | Сохраняет читаемость старта, предотвращает разрушение предыдущих записей и объясняет задержку как часть таймлайна. | MVP | clone_recording_and_playback | all | validated_in_local_slice | docs/2026-07-05_delayed_clone_control_gd-spec.md |
+| clone_readability | Визуальная Читаемость Клонов | Активный игрок самый заметный, playback-клоны получают alpha по возрасту, altered-клоны получают flash и слабый tint/outline поверх age-alpha; текущие цвета вынесены в visual config. | Помогает понимать, какая итерация активна, в каком порядке идут клоны и где игрок вмешался в прошлое. | MVP | clone_recording_and_playback | all | validated_in_local_slice | docs/2026-07-05_clone_readability_gd-spec.md |
 | buttons_levers_doors | Кнопки, Рычаги И Двери | В MVP-срезе реализована нажимная плита, открывающая дверь, которую может удерживать playback-клон. | Создает основной язык puzzle-задач. | MVP | player_movement, clone_collision_and_interaction | all | validated_in_webgl_slice | TBD |
 | elevators | Лифты | Вертикальные или горизонтальные платформы, управляемые кнопками, рычагами или таймингом. | Добавляет позиционные задачи и маршруты для клонов. | MVP | buttons_levers_doors | all | planned | TBD |
 | basic_traps | Базовые Ловушки | В MVP-срезе есть pit hazard как placeholder-ловушка; стационарные/выдвижные шипы и диски остаются будущей задачей. | Дает угрозы, вокруг которых строятся временные синхронизации. | MVP | death_and_paradox, buttons_levers_doors | all | implemented_in_mvp_slice | TBD |
@@ -51,20 +51,24 @@
 - `planned`: фича еще не реализована.
 - `implemented_in_mvp_slice`: реализовано минимальное подмножество для текущего вертикального среза, но без отдельной полной feature spec или полного QA.
 - `validated_in_webgl_slice`: реализовано и подтверждено ручной проверкой в опубликованной WebGL-сборке 2026-06-25.
-- `validated_in_webgl_slice_with_open_default`: поведение работает в WebGL-срезе, но финальный дизайн-дефолт еще не выбран.
+- `validated_in_local_slice`: реализовано и подтверждено пользователем в локальной/текущей playable-версии этой сессии.
+- `updated_pending_unity_validation`: дизайн и локальные файлы обновлены, но требуется проверка в Unity Editor / playable build.
 - `mvp_placeholder`: есть временное решение для читаемости/проверки core loop, финальная реализация требует отдельной работы.
 
 ## Documentation Registry
 
 | doc | purpose | current_status |
 |---|---|---|
-| `docs/project-concept.md` | Верхнеуровневое видение проекта, core loop, MVP границы и открытые вопросы. | updated_for_stable_webgl_slice |
-| `docs/feature-index.md` | Реестр фич, статусов, зависимостей и документации. | updated_for_stable_webgl_slice |
-| `docs/2026-06-25_time_rewind_gd-spec.md` | Feature spec центральной механики отмотки времени и вертикального среза. | validated_in_webgl_slice |
+| `docs/project-concept.md` | Верхнеуровневое видение проекта, core loop, MVP границы и открытые вопросы. | updated_for_validated_local_slice |
+| `docs/feature-index.md` | Реестр фич, статусов, зависимостей и документации. | updated_for_validated_local_slice |
+| `docs/2026-06-25_time_rewind_gd-spec.md` | Feature spec центральной механики отмотки времени и вертикального среза. | validated_in_local_slice |
 | `docs/2026-06-25_player_movement_gd-spec.md` | Feature spec движения и прыжка для MVP-среза. | validated_in_webgl_slice |
-| `docs/2026-06-25_clone_collision_and_interaction_gd-spec.md` | Feature spec физического взаимодействия клонов и debug-режимов смещения. | validated_in_webgl_slice_with_open_default |
-| `docs/unity-project-setup.md` | Unity setup, локальная проверка, WebGL build и GitHub Pages deploy. | updated_for_stable_webgl_slice |
-| `docs/DECISION_LOG.md` | Журнал принятых решений по Unity, фичам, WebGL и публикации. | updated_for_stable_webgl_slice |
+| `docs/2026-07-04_clone_recording_and_playback_gd-spec.md` | Feature spec записи и воспроизведения клонов, включая гибридный источник истины, default `Preserve displacement` и удержание клона до конца таймера. | validated_in_local_slice |
+| `docs/2026-06-25_clone_collision_and_interaction_gd-spec.md` | Feature spec физического взаимодействия клонов и debug-режимов смещения. | validated_in_local_slice |
+| `docs/2026-07-05_delayed_clone_control_gd-spec.md` | Feature spec задержки появления новой итерации, ghost/preview и радиального spawn-индикатора. | validated_in_local_slice |
+| `docs/2026-07-05_clone_readability_gd-spec.md` | Feature spec визуальной читаемости активного игрока, playback-клонов, altered-состояния и ghost. | validated_in_local_slice |
+| `docs/unity-project-setup.md` | Unity setup, локальная проверка, WebGL build и GitHub Pages deploy. | updated_for_validated_local_slice |
+| `docs/DECISION_LOG.md` | Журнал принятых решений по Unity, фичам, WebGL и публикации. | updated_for_validated_local_slice |
 | `docs/git-workflow.md` | Git workflow проекта. | unchanged_this_session |
 
 ## Top-3 Рисковые Фичи

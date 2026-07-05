@@ -59,7 +59,12 @@ namespace RetroTimers.TimeRewind
 
             if (recordingEnabled)
             {
-                recording.Add(new ActorFrame(iterationTime, body.position, body.linearVelocity));
+                recording.Add(new ActorFrame(
+                    iterationTime,
+                    body.position,
+                    body.linearVelocity,
+                    GetMovementDirection(),
+                    GetMovementState()));
             }
 
             iterationTime += Time.fixedDeltaTime;
@@ -111,6 +116,31 @@ namespace RetroTimers.TimeRewind
         private bool IsGrounded()
         {
             return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundMask) != null;
+        }
+
+        private float GetMovementDirection()
+        {
+            if (Mathf.Abs(horizontalInput) > 0.01f)
+            {
+                return Mathf.Sign(horizontalInput);
+            }
+
+            if (Mathf.Abs(body.linearVelocity.x) > 0.01f)
+            {
+                return Mathf.Sign(body.linearVelocity.x);
+            }
+
+            return 0f;
+        }
+
+        private ActorFrameMovementState GetMovementState()
+        {
+            if (!IsGrounded())
+            {
+                return body.linearVelocity.y > 0f ? ActorFrameMovementState.Jumping : ActorFrameMovementState.Falling;
+            }
+
+            return Mathf.Abs(body.linearVelocity.x) > 0.01f ? ActorFrameMovementState.Moving : ActorFrameMovementState.Idle;
         }
 
         private static float ReadHorizontalInput()

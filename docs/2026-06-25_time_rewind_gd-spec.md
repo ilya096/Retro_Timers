@@ -7,7 +7,7 @@
 - Проект / версия / сезон: `Retro Timer`, MVP
 - Фичеовнер: `TBD`
 - Стейкхолдеры: геймдизайн, gameplay engineering, UX, QA
-- Статус: validated_in_webgl_slice
+- Статус: validated_in_local_slice
 - Дата создания: 2026-06-25
 - Дата обновления: 2026-06-25
 - Связанные документы:
@@ -23,6 +23,8 @@
   - 2026-06-25: MVP-прыжок игрока поднят до высоты, позволяющей запрыгивать на клонов и надежно использовать блокировку маршрута.
   - 2026-06-25: добавлен debug-переключатель режима playback-клонов после физического смещения.
   - 2026-06-25: WebGL-срез опубликован на GitHub Pages и подтвержден пользователем как рабочий и стабильный.
+  - 2026-07-04: по отдельной spec `clone_recording_and_playback` дефолт playback-клонов изменен на `Preserve displacement`, а переключатель режима перенесен в editor/development debug-панель.
+  - 2026-07-05: текущая локальная версия подтверждена пользователем как рабочая и стабильная; добавлены delayed spawn ghost, радиальный spawn indicator, visual config, age-alpha клонов и удержание playback-клона до конца таймера уровня.
 
 ## 1. Саммари Фичи
 
@@ -233,6 +235,7 @@
 - Debug-режимы восстановления playback-клона после сдвига:
   - `Recover to recording`: клон догоняет записанную абсолютную позицию;
   - `Preserve displacement`: клон не возвращается к записанной абсолютной позиции, а сохраняет физическое смещение и применяет только записанные дельты движения.
+- MVP-дефолт после 2026-07-04: `Preserve displacement`; сравнение режимов доступно только в editor/development debug-панели.
 - Правила ограничений:
   - цена ручной отмотки выражена через задержку управления и расход общего времени уровня;
   - отдельного лимита отмоток в MVP нет;
@@ -515,7 +518,13 @@ remaining_active_time_after_delay = level_time_limit_seconds - player_control_de
   - скрытие playback-клонов до времени их первого записанного кадра;
   - физический приоритет текущего игрока над playback-клонами;
   - остановка playback-клона перед текущим игроком без проталкивания игрока;
-  - debug-переключатель `Clone mode` в HUD для сравнения возврата к записи и сохранения физического смещения;
+  - дефолтный playback-режим `Preserve displacement`;
+  - editor/development debug-панель для сравнения возврата к записи и сохранения физического смещения;
+  - visual altered feedback после физического вмешательства текущего игрока в playback-клона;
+  - delayed spawn ghost появляется после старта rewind и скрытия текущей итерации;
+  - радиальный spawn indicator расположен над ghost и ограничен шириной персонажа;
+  - playback-клон после конца записи удерживает последнюю фактическую позицию до конца таймера уровня;
+  - visual config содержит текущую палитру игрока, клонов, preview и тестовых объектов;
   - проверка `minimum_active_time_after_delay`;
   - создание playback-клонов по записям;
   - fail-state при парадоксе или нехватке активного времени;
@@ -524,7 +533,7 @@ remaining_active_time_after_delay = level_time_limit_seconds - player_control_de
   - EditMode-тесты для формул и доступности ручной отмотки.
 - Editor-инструмент `RetroTimers/Build Time Rewind Test Scene` генерирует `Assets/Scenes/TimeRewindTestScene.unity`.
 - Editor-инструмент `RetroTimers/Build WebGL` и batchmode-метод `RetroTimers.EditorTools.WebGLBuildPipeline.BuildGithubPages` собирают GitHub Pages-ready WebGL build.
-- Статус проверки: Unity batchmode успешно собрал WebGL; published build на `https://ilya096.github.io/Retro_Timers/` открыт и подтвержден пользователем как рабочий. HTTP-проверка `index.html`, `WebGL.loader.js`, `WebGL.wasm` и `WebGL.data` вернула `200`.
+- Статус проверки: Unity batchmode успешно собрал WebGL-срез 2026-06-25; published build на `https://ilya096.github.io/Retro_Timers/` открыт и подтвержден пользователем как рабочий. Текущая локальная версия 2026-07-05 также подтверждена пользователем как рабочая и стабильная; `dotnet build UnityProject/UnityProject.sln` завершился без ошибок, кроме известного warning Unity/.NET про `System.Net.Http`.
 
 ## 18. План Релиза
 

@@ -21,11 +21,12 @@ namespace RetroTimers.EditorTools
             EnsureDirectory(PrefabDirectory);
             EnsureDirectory(MaterialDirectory);
 
-            GameObject playerPrefab = BuildPlayerPrefab();
+            TimeRewindVisualConfig visualConfig = new();
+            GameObject playerPrefab = BuildPlayerPrefab(visualConfig);
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             scene.name = "TimeRewindTestScene";
 
-            BuildCamera();
+            BuildCamera(visualConfig);
             BuildGlobalLight();
 
             Transform spawn = CreateMarker("Player Spawn", new Vector3(-5f, 0f, 0f)).transform;
@@ -41,10 +42,19 @@ namespace RetroTimers.EditorTools
             controllerSerialized.FindProperty("levelTimeLimitSeconds").floatValue = 12f;
             controllerSerialized.FindProperty("cloneSpawnDelaySeconds").floatValue = 3f;
             controllerSerialized.FindProperty("minimumActiveTimeAfterDelay").floatValue = 1f;
+            controllerSerialized.FindProperty("cloneNewestAlpha").floatValue = 0.8f;
+            controllerSerialized.FindProperty("cloneAlphaStep").floatValue = 0.2f;
+            controllerSerialized.FindProperty("cloneMinAlpha").floatValue = 0.2f;
+            controllerSerialized.FindProperty("cloneAlteredFlashSeconds").floatValue = 0.18f;
+            controllerSerialized.FindProperty("delayedSpawnPreviewThresholdSeconds").floatValue = 0.25f;
+            controllerSerialized.FindProperty("delayedSpawnRadialSegments").intValue = 48;
+            controllerSerialized.FindProperty("delayedSpawnRadialRadius").floatValue = 0.32f;
+            controllerSerialized.FindProperty("delayedSpawnRadialGapAboveGhost").floatValue = 0.12f;
+            controllerSerialized.FindProperty("clonePlaybackMode").enumValueIndex = (int)ClonePlaybackMode.PreservePhysicalOffset;
             controllerSerialized.ApplyModifiedPropertiesWithoutUndo();
             controllerObject.AddComponent<RewindHud>();
 
-            BuildLevel(controller);
+            BuildLevel(controller, visualConfig);
 
             EditorUtility.SetDirty(controller);
             EditorSceneManager.MarkSceneDirty(scene);
@@ -57,7 +67,7 @@ namespace RetroTimers.EditorTools
             Debug.Log($"Built RetroTimers rewind test scene at {ScenePath}");
         }
 
-        private static GameObject BuildPlayerPrefab()
+        private static GameObject BuildPlayerPrefab(TimeRewindVisualConfig visualConfig)
         {
             GameObject player = GameObject.CreatePrimitive(PrimitiveType.Cube);
             player.name = "MvpPlayer";
@@ -74,7 +84,7 @@ namespace RetroTimers.EditorTools
             collider.size = new Vector2(0.75f, 1.35f);
 
             MeshRenderer renderer = player.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = BuildMaterial("MvpPlayerMaterial", new Color(0.15f, 0.85f, 1f, 1f));
+            renderer.sharedMaterial = BuildMaterial("MvpPlayerMaterial", visualConfig.ActivePlayerColor);
 
             Transform groundCheck = new GameObject("Ground Check").transform;
             groundCheck.SetParent(player.transform);
@@ -92,14 +102,14 @@ namespace RetroTimers.EditorTools
             return savedPrefab;
         }
 
-        private static void BuildCamera()
+        private static void BuildCamera(TimeRewindVisualConfig visualConfig)
         {
             GameObject cameraObject = new("Main Camera");
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.orthographic = true;
             camera.orthographicSize = 6f;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.08f, 0.1f, 0.14f, 1f);
+            camera.backgroundColor = visualConfig.CameraBackgroundColor;
             cameraObject.AddComponent<AudioListener>();
             cameraObject.tag = "MainCamera";
             cameraObject.transform.position = new Vector3(1.5f, 1.3f, -10f);
@@ -115,13 +125,13 @@ namespace RetroTimers.EditorTools
             }
         }
 
-        private static void BuildLevel(TimeRewindController controller)
+        private static void BuildLevel(TimeRewindController controller, TimeRewindVisualConfig visualConfig)
         {
-            CreateSolidBox("Ground", new Vector3(1.5f, -1.1f, 0f), new Vector3(16f, 0.7f, 1f), new Color(0.2f, 0.24f, 0.3f, 1f));
-            CreateSolidBox("Left Wall", new Vector3(-7f, 1f, 0f), new Vector3(0.5f, 4f, 1f), new Color(0.2f, 0.24f, 0.3f, 1f));
+            CreateSolidBox("Ground", new Vector3(1.5f, -1.1f, 0f), new Vector3(16f, 0.7f, 1f), visualConfig.SolidLevelColor);
+            CreateSolidBox("Left Wall", new Vector3(-7f, 1f, 0f), new Vector3(0.5f, 4f, 1f), visualConfig.SolidLevelColor);
 
-            GameObject plate = CreateTriggerBox("Pressure Plate", new Vector3(-0.2f, -0.55f, 0f), new Vector3(1.25f, 0.18f, 1f), new Color(1f, 0.84f, 0.25f, 1f));
-            GameObject door = CreateSolidBox("Door", new Vector3(4.7f, 0.65f, 0f), new Vector3(0.65f, 3f, 1f), new Color(0.85f, 0.25f, 0.2f, 1f));
+            GameObject plate = CreateTriggerBox("Pressure Plate", new Vector3(-0.2f, -0.55f, 0f), new Vector3(1.25f, 0.18f, 1f), visualConfig.PressurePlateColor);
+            GameObject door = CreateSolidBox("Door", new Vector3(4.7f, 0.65f, 0f), new Vector3(0.65f, 3f, 1f), visualConfig.DoorColor);
             PressurePlateDoor pressureDoor = plate.AddComponent<PressurePlateDoor>();
             SerializedObject pressureSerialized = new(pressureDoor);
             pressureSerialized.FindProperty("detectionArea").objectReferenceValue = plate.GetComponent<Collider2D>();
@@ -129,19 +139,19 @@ namespace RetroTimers.EditorTools
             pressureSerialized.FindProperty("doorCollider").objectReferenceValue = door.GetComponent<Collider2D>();
             pressureSerialized.ApplyModifiedPropertiesWithoutUndo();
 
-            GameObject exit = CreateTriggerBox("Exit", new Vector3(7.4f, 0.05f, 0f), new Vector3(0.8f, 2.0f, 1f), new Color(0.2f, 1f, 0.55f, 1f));
+            GameObject exit = CreateTriggerBox("Exit", new Vector3(7.4f, 0.05f, 0f), new Vector3(0.8f, 2.0f, 1f), visualConfig.ExitColor);
             LevelExit levelExit = exit.AddComponent<LevelExit>();
             SerializedObject exitSerialized = new(levelExit);
             exitSerialized.FindProperty("controller").objectReferenceValue = controller;
             exitSerialized.ApplyModifiedPropertiesWithoutUndo();
 
-            GameObject hazard = CreateTriggerBox("Pit Hazard", new Vector3(1.9f, -1.65f, 0f), new Vector3(1.2f, 0.25f, 1f), new Color(0.85f, 0.1f, 0.32f, 1f));
+            GameObject hazard = CreateTriggerBox("Pit Hazard", new Vector3(1.9f, -1.65f, 0f), new Vector3(1.2f, 0.25f, 1f), visualConfig.HazardColor);
             Hazard hazardComponent = hazard.AddComponent<Hazard>();
             SerializedObject hazardSerialized = new(hazardComponent);
             hazardSerialized.FindProperty("controller").objectReferenceValue = controller;
             hazardSerialized.ApplyModifiedPropertiesWithoutUndo();
 
-            CreateLabel("Goal: first run to the yellow plate, press R, then use the clone to pass the red door.", new Vector3(-2f, 4.3f, 0f));
+            CreateLabel("Goal: first run to the yellow plate, press R, then use the clone to pass the red door.", new Vector3(-2f, 4.3f, 0f), visualConfig.SceneLabelColor);
         }
 
         private static GameObject CreateSolidBox(string name, Vector3 position, Vector3 scale, Color color)
@@ -172,7 +182,7 @@ namespace RetroTimers.EditorTools
             return marker;
         }
 
-        private static void CreateLabel(string text, Vector3 position)
+        private static void CreateLabel(string text, Vector3 position, Color color)
         {
             GameObject label = new("Scene Instructions");
             label.transform.position = position;
@@ -181,7 +191,7 @@ namespace RetroTimers.EditorTools
             mesh.anchor = TextAnchor.MiddleCenter;
             mesh.alignment = TextAlignment.Center;
             mesh.characterSize = 0.22f;
-            mesh.color = Color.white;
+            mesh.color = color;
         }
 
         private static Material BuildMaterial(string name, Color color)
